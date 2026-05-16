@@ -1,0 +1,2 @@
+# Homelab: prevent kernel runtime autosuspend on boot NVMe
+ACTION=="add|change", KERNEL=="nvme0", SUBSYSTEM=="nvme", ATTR{power/control}="on"

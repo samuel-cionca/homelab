@@ -1,0 +1,152 @@
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_DIR}/portainer:/data
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ${CONFIG_DIR}/uptime-kuma:/app/data
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${CONFIG_DIR}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  pihole:
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      WEBPASSWORD: ${PIHOLE_WEBPASSWORD}
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "8081:80"
+    volumes:
+      - ${CONFIG_DIR}/pihole:/etc/pihole
+      - ${CONFIG_DIR}/pihole-dnsmasq:/etc/dnsmasq.d
+
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:latest
+    restart: unless-stopped
+    environment:
+      WG_HOST: ${WG_HOST}
+      PASSWORD: ${WG_PASSWORD}
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821"
+    volumes:
+      - ${CONFIG_DIR}/wg-easy:/etc/wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.src_valid_mark: 1
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${CONFIG_DIR}/homeassistant:/config
+
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${CONFIG_DIR}/jellyfin:/config
+      - ${CONFIG_DIR}/jellyfin-cache:/cache
+      - ${MEDIA_DIR}:/media
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ${CONFIG_DIR}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ${CONFIG_DIR}/grafana/data:/var/lib/grafana
+      - ${CONFIG_DIR}/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    pid: host
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8082:8080"
+
+  smartctl-exporter:
+    build:
+      context: ${CONFIG_DIR}/smartctl-exporter
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev:ro
+    ports:
+      - "9633:9633"
+    command:
+      - --smartctl.device=/dev/nvme0
+
+volumes:
+  prometheus-data:

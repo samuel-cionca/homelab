@@ -1,0 +1,2 @@
+# smartctl-exporter scans this device on pi5-sol (WD_BLACK SN7100)
+/dev/nvme0
