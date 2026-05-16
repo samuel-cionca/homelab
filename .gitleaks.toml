@@ -9,6 +9,7 @@ paths = [
   '''(?i)(^|/)\.env\.example$''',
   '''(?i)(^|/)secrets\.env\.example$''',
   '''(?i)(^|/)host\.env\.example$''',
+  '''(?i)(^|/)leak-test\.txt$''',
 ]
 regexes = [
   '''(?i)change-me-now''',
