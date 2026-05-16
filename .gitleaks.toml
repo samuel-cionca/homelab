@@ -1,0 +1,13 @@
+title = "homelab gitleaks"
+
+[allowlist]
+description = "Placeholder env examples only — never allowlist real host.env or secrets.env"
+paths = [
+  '''(?i)(^|/)\.env\.example$''',
+  '''(?i)(^|/)secrets\.env\.example$''',
+  '''(?i)(^|/)host\.env\.example$''',
+]
+regexes = [
+  '''(?i)change-me-now''',
+  '''(?i)change-me\.example\.com''',
+]

@@ -1,6 +1,6 @@
 # Homelab
 
-Private infra repo: shared **bootstrap** templates, **per-host** env, and optional **system** overrides.
+Reproducible Docker homelab bootstrap: shared **templates**, **per-host** env, and optional **system** overrides.
 
 ## Layout
 
@@ -28,6 +28,16 @@ sudo ./bootstrap/setup.sh --test-nvme
 ```
 
 If `hostname` matches a folder under `hosts/` (this Pi: `sol` → `hosts/sol` → `pi5-sol`), `--host` can be omitted.
+
+## Secret scan
+
+Before pushing, run a local scan (requires Docker):
+
+```bash
+./scripts/gitleaks.sh
+```
+
+CI runs [gitleaks](https://github.com/gitleaks/gitleaks) on every push and pull request. Never commit real `host.env`, `secrets.env`, or `.env` files — only `*.example` placeholders.
 
 ## Day-two commands
 
