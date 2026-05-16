@@ -39,6 +39,12 @@ Before pushing, run a local scan (requires Docker):
 
 CI runs [gitleaks](https://github.com/gitleaks/gitleaks) on every push and pull request. Never commit real `host.env`, `secrets.env`, or `.env` files — only `*.example` placeholders.
 
+**Optional (local only):** a `pre-push` hook under `~/.config/git/hooks/homelab/` runs the same scan before `git push`. After a fresh clone, enable it once:
+
+```bash
+git config --local core.hooksPath ~/.config/git/hooks/homelab
+```
+
 ## Day-two commands
 
 | Command | Purpose |

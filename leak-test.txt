@@ -1,1 +1,1 @@
-api_key=7f3a9c2e1b8d4f6a0e5c7b2d9f1a4e8c3b6d0f2a
+GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuvwxyz1234

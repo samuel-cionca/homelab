@@ -1,5 +1,8 @@
 title = "homelab gitleaks"
 
+[extend]
+useDefault = true
+
 [allowlist]
 description = "Placeholder env examples only — never allowlist real host.env or secrets.env"
 paths = [
