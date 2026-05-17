@@ -40,7 +40,10 @@ services:
       - ${CONFIG_DIR}/pihole:/etc/pihole
       - ${CONFIG_DIR}/pihole-dnsmasq:/etc/dnsmasq.d
 
+  # Off unless profile is set: COMPOSE_PROFILES=wireguard docker compose up -d wg-easy
   wg-easy:
+    profiles:
+      - wireguard
     image: ghcr.io/wg-easy/wg-easy:latest
     restart: unless-stopped
     environment:
