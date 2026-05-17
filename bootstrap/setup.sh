@@ -257,7 +257,10 @@ populate_templates() {
   copy_file_if_needed "$(template_src configs/prometheus/prometheus.yml)" "${BASE_DIR}/configs/prometheus/prometheus.yml"
   copy_file_if_needed "$(template_src configs/grafana/provisioning/datasources/prometheus.yaml)" "${BASE_DIR}/configs/grafana/provisioning/datasources/prometheus.yaml"
   copy_file_if_needed "$(template_src configs/grafana/provisioning/dashboards/provider.yaml)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/provider.yaml"
-  copy_file_if_needed "$(template_src configs/grafana/provisioning/dashboards/json/ssd-temperature.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/ssd-temperature.json"
+  # Always sync: restarts alone do not pull JSON from git; copy_file_if_needed skips when the file exists.
+  install -m 0644 "$(template_src configs/grafana/provisioning/dashboards/json/homelab-temperature.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
+  log "Wrote: ${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
+  rm -f "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/ssd-temperature.json"
   copy_file_if_needed "$(template_src smartctl-exporter/Dockerfile)" "${BASE_DIR}/configs/smartctl-exporter/Dockerfile"
 
   if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/docker-compose.override.yml" ]]; then
@@ -274,7 +277,7 @@ fix_grafana_permissions() {
 
   if [[ -f "${legacy_dashboard}" ]]; then
     log "Moving legacy dashboard into ${dashboard_json_dir}/"
-    install -m 0644 "${legacy_dashboard}" "${dashboard_json_dir}/ssd-temperature.json"
+    install -m 0644 "${legacy_dashboard}" "${dashboard_json_dir}/homelab-temperature.json"
     rm -f "${legacy_dashboard}"
   fi
 
@@ -500,8 +503,8 @@ do_install() {
   install_neovim_latest_stable
   install_docker_if_missing
   create_structure
-  populate_templates
   fix_grafana_permissions
+  populate_templates
   add_aliases
   compose_install
 

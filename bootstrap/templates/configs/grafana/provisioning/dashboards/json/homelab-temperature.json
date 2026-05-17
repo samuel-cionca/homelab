@@ -1,10 +1,10 @@
 {
-  "uid": "homelab-ssd-temp",
-  "title": "NVMe SSD Temperature",
-  "tags": ["homelab", "smartctl"],
+  "uid": "homelab-temperature",
+  "title": "Storage & host temperature",
+  "tags": ["homelab", "smartctl", "node-exporter"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
@@ -108,6 +108,59 @@
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "value"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "CPU temperature (node_exporter)",
+      "description": "From node_exporter `node_thermal_zone_temp` (Pi: cpu-thermal; many Intel: x86_pkg_temp). If no data, search Prometheus for `node_hwmon_temp_celsius`.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(node_thermal_zone_temp{type=~\"cpu-thermal|x86_pkg_temp\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "CPU thermal zones",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "node_thermal_zone_temp{type=~\"cpu-thermal|x86_pkg_temp\"}",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
       }
     }
   ]
