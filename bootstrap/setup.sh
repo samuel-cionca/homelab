@@ -11,6 +11,7 @@ GRAFANA_GID=472
 FORCE=0
 CLEAN_INSTALL=0
 NVME_CMDLINE_NEEDS_REBOOT=0
+PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=0
 HOST=""
 HOST_DIR=""
 SYSTEMS_DIR=""
@@ -24,7 +25,7 @@ Usage:
   ./bootstrap/setup.sh [--host NAME] [--install|--update|--backup|--restart|--test|--test-nvme|--reset] [--force] [--clean-install]
 
 Actions:
-  --install   Install tools, Docker (if missing), NVMe power tuning, and bootstrap homelab (default)
+  --install   Install tools, Docker (if missing), NVMe tuning, Pi 5 WiFi/BT tweaks, Neovim, and homelab stack (default)
   --update    Pull and recreate containers, then prune old images
   --backup    Create config backup archive
   --restart   Restart containers
@@ -329,6 +330,72 @@ configure_nvme_power() {
   fi
 }
 
+device_tree_model() {
+  [[ -r /proc/device-tree/model ]] || return 1
+  tr -d '\0' </proc/device-tree/model
+}
+
+is_raspberry_pi_5() {
+  local model=""
+  model="$(device_tree_model)" || return 1
+  case "${model}" in
+    *"Raspberry Pi 5"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+configure_pi5_wifi_bt_stability() {
+  local wifi_src bluetooth_src nm_dst bluetooth_dst
+  local wifi_changed=0 bluetooth_changed=0 model=""
+
+  if ! is_raspberry_pi_5; then
+    if model="$(device_tree_model 2>/dev/null)" && [[ -n "${model}" ]]; then
+      log "Skipping Pi 5 WiFi/Bluetooth tuning (model: ${model})"
+    else
+      log "Skipping Pi 5 WiFi/Bluetooth tuning (device tree model unavailable)"
+    fi
+    return 0
+  fi
+
+  log "Applying Raspberry Pi 5 WiFi/Bluetooth stability tuning"
+
+  wifi_src="$(template_src pi5/wifi-powersave.conf)"
+  bluetooth_src="$(template_src pi5/bluetooth-disable-ertm.conf)"
+  nm_dst="/etc/NetworkManager/conf.d/wifi-powersave.conf"
+  bluetooth_dst="/etc/modprobe.d/99-homelab-bluetooth-disable-ertm.conf"
+
+  if [[ -f /etc/NetworkManager/NetworkManager.conf ]] && command -v NetworkManager >/dev/null 2>&1; then
+    mkdir -p /etc/NetworkManager/conf.d
+    if [[ "${FORCE}" -eq 1 ]] || [[ ! -f "${nm_dst}" ]] || ! cmp -s "${wifi_src}" "${nm_dst}"; then
+      install -m 0644 "${wifi_src}" "${nm_dst}"
+      log "Installed ${nm_dst}"
+      wifi_changed=1
+    else
+      log "Leaving existing NetworkManager wifi-powersave config (${nm_dst}); use --force to refresh"
+    fi
+    if [[ "${wifi_changed}" -eq 1 ]] && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+      systemctl restart NetworkManager
+      log "Restarted NetworkManager"
+    fi
+  else
+    log "Skipping NetworkManager wifi-powersave (NetworkManager not present)"
+  fi
+
+  if [[ "${FORCE}" -eq 1 ]] || [[ ! -f "${bluetooth_dst}" ]] || ! cmp -s "${bluetooth_src}" "${bluetooth_dst}"; then
+    install -m 0644 "${bluetooth_src}" "${bluetooth_dst}"
+    log "Installed ${bluetooth_dst}"
+    bluetooth_changed=1
+    PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=1
+  else
+    log "Leaving existing Bluetooth modprobe (${bluetooth_dst}); use --force to refresh"
+  fi
+
+  if [[ "${bluetooth_changed}" -eq 0 ]] && [[ -r /sys/module/bluetooth/parameters/disable_ertm ]] && [[ "$(cat /sys/module/bluetooth/parameters/disable_ertm 2>/dev/null)" != "Y" ]]; then
+    PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=1
+    log "Bluetooth module loaded without disable_ertm=Y; reboot to apply ${bluetooth_dst}"
+  fi
+}
+
 compose_has_service() {
   local svc="$1"
   docker compose config --services 2>/dev/null | grep -qx "${svc}"
@@ -429,6 +496,7 @@ do_install() {
   resolve_host
   install_host_tools
   configure_nvme_power
+  configure_pi5_wifi_bt_stability
   install_neovim_latest_stable
   install_docker_if_missing
   create_structure
@@ -454,6 +522,9 @@ Potential reboot needed for docker group changes:
 EOF
   if [[ "${NVME_CMDLINE_NEEDS_REBOOT}" -eq 1 ]]; then
     echo "NVMe: reboot once to apply nvme_core.default_ps_max_latency_us=0 in cmdline."
+  fi
+  if [[ "${PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT}" -eq 1 ]]; then
+    echo "Pi 5 Bluetooth: reboot once so disable_ertm=Y is applied (/etc/modprobe.d/99-homelab-bluetooth-disable-ertm.conf)."
   fi
 }
 
