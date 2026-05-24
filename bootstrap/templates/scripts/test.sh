@@ -13,12 +13,14 @@ usage() {
 Usage: test.sh [suite]
 
 Suites:
-  nvme   Boot NVMe device, temperature, power tuning, optional exporter
-  all    Run all suites (default)
+  nvme        Boot NVMe device, temperature, power tuning, optional exporter
+  pi5-power   Pi 5 PMIC / throttle / under-voltage textfile exporter
+  all         Run all suites (default)
 
 Examples:
   /opt/homelab/scripts/test.sh
   /opt/homelab/scripts/test.sh nvme
+  /opt/homelab/scripts/test.sh pi5-power
   sudo ./setup.sh --test
   sudo ./setup.sh --test-nvme
 EOF
@@ -43,6 +45,7 @@ case "${SUITE}" in
   all)
     failed=0
     run_suite nvme || failed=1
+    run_suite pi5-power || failed=1
     echo "────────────────────────────────────────"
     if [[ "${failed}" -eq 0 ]]; then
       echo "==> All suites passed"
@@ -53,6 +56,9 @@ case "${SUITE}" in
     ;;
   nvme)
     run_suite nvme
+    ;;
+  pi5-power)
+    run_suite pi5-power
     ;;
   *)
     echo "Unknown suite: ${SUITE}"

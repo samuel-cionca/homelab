@@ -115,10 +115,12 @@ services:
       - --path.sysfs=/host/sys
       - --path.rootfs=/host
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      - ${CONFIG_DIR}/node-exporter/textfile:/var/lib/node_exporter/textfile_collector:ro
     pid: host
 
   cadvisor:

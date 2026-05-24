@@ -12,6 +12,7 @@ FORCE=0
 CLEAN_INSTALL=0
 NVME_CMDLINE_NEEDS_REBOOT=0
 PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=0
+PI5_POWER_EXPORTER_INSTALLED=0
 HOST=""
 HOST_DIR=""
 SYSTEMS_DIR=""
@@ -29,8 +30,9 @@ Actions:
   --update    Pull and recreate containers, then prune old images
   --backup    Create config backup archive
   --restart   Restart containers
-  --test      Run health checks (all suites)
-  --test-nvme Run NVMe health checks only
+  --test           Run health checks (all suites)
+  --test-nvme      Run NVMe health checks only
+  --test-pi5-power Run Pi 5 PMIC / throttle health checks only
   --reset     Stop stack and remove /opt/homelab (destructive)
 
 Flags:
@@ -113,18 +115,28 @@ install_neovim_latest_stable() {
   tmpdir="$(mktemp -d)"
 
   version_url="https://api.github.com/repos/neovim/neovim/releases/latest"
-  appimage_url="$(curl -fsSL "$version_url" | jq -r '.assets[] | select(.name == "nvim-linux-arm64.appimage") | .browser_download_url')"
+  appimage_url="$(curl -fsSL --max-time 15 "$version_url" 2>/dev/null | jq -r '.assets[] | select(.name == "nvim-linux-arm64.appimage") | .browser_download_url' 2>/dev/null || true)"
 
   if [[ -z "${appimage_url}" || "${appimage_url}" == "null" ]]; then
-    appimage_url="$(curl -fsSL "$version_url" | jq -r '.assets[] | select(.name == "nvim.appimage") | .browser_download_url' | head -n1)"
+    appimage_url="$(curl -fsSL --max-time 15 "$version_url" 2>/dev/null | jq -r '.assets[] | select(.name == "nvim.appimage") | .browser_download_url' 2>/dev/null | head -n1 || true)"
   fi
 
   if [[ -z "${appimage_url}" || "${appimage_url}" == "null" ]]; then
-    echo "Could not resolve Neovim stable AppImage URL."
-    exit 1
+    rm -rf "${tmpdir}"
+    if command -v nvim >/dev/null 2>&1; then
+      log "WARNING: Could not resolve Neovim AppImage URL (network?). Keeping existing nvim at $(command -v nvim)."
+    else
+      log "WARNING: Could not resolve Neovim AppImage URL (network?). Skipping Neovim install; re-run later or 'apt install -y neovim'."
+    fi
+    return 0
   fi
 
-  curl -fL "$appimage_url" -o "${tmpdir}/nvim.appimage"
+  if ! curl -fL --max-time 60 "$appimage_url" -o "${tmpdir}/nvim.appimage"; then
+    rm -rf "${tmpdir}"
+    log "WARNING: Neovim download failed (network?). Skipping; re-run setup later to retry."
+    return 0
+  fi
+
   chmod +x "${tmpdir}/nvim.appimage"
   install -m 0755 "${tmpdir}/nvim.appimage" /usr/local/bin/nvim
   rm -rf "${tmpdir}"
@@ -170,6 +182,7 @@ create_structure() {
     "${BASE_DIR}/configs/grafana/provisioning/dashboards" \
     "${BASE_DIR}/configs/grafana/provisioning/dashboards/json" \
     "${BASE_DIR}/configs/smartctl-exporter" \
+    "${BASE_DIR}/configs/node-exporter/textfile" \
     "${BASE_DIR}/data/backups" \
     "${BASE_DIR}/media/movies" \
     "${BASE_DIR}/media/series" \
@@ -253,6 +266,8 @@ populate_templates() {
   copy_script_if_needed "$(template_src scripts/restore.sh)" "${BASE_DIR}/scripts/restore.sh"
   copy_script_if_needed "$(template_src scripts/test.sh)" "${BASE_DIR}/scripts/test.sh"
   copy_script_if_needed "$(template_src scripts/tests/nvme.sh)" "${BASE_DIR}/scripts/tests/nvme.sh"
+  copy_script_if_needed "$(template_src scripts/tests/pi5-power.sh)" "${BASE_DIR}/scripts/tests/pi5-power.sh"
+  copy_script_if_needed "$(template_src scripts/pi5-power-exporter.sh)" "${BASE_DIR}/scripts/pi5-power-exporter.sh"
 
   copy_file_if_needed "$(template_src configs/prometheus/prometheus.yml)" "${BASE_DIR}/configs/prometheus/prometheus.yml"
   copy_file_if_needed "$(template_src configs/grafana/provisioning/datasources/prometheus.yaml)" "${BASE_DIR}/configs/grafana/provisioning/datasources/prometheus.yaml"
@@ -260,6 +275,8 @@ populate_templates() {
   # Always sync: restarts alone do not pull JSON from git; copy_file_if_needed skips when the file exists.
   install -m 0644 "$(template_src configs/grafana/provisioning/dashboards/json/homelab-temperature.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
   log "Wrote: ${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
+  install -m 0644 "$(template_src configs/grafana/provisioning/dashboards/json/pi5-power.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/pi5-power.json"
+  log "Wrote: ${BASE_DIR}/configs/grafana/provisioning/dashboards/json/pi5-power.json"
   rm -f "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/ssd-temperature.json"
   copy_file_if_needed "$(template_src smartctl-exporter/Dockerfile)" "${BASE_DIR}/configs/smartctl-exporter/Dockerfile"
 
@@ -399,6 +416,56 @@ configure_pi5_wifi_bt_stability() {
   fi
 }
 
+configure_pi5_power_monitoring() {
+  local service_src timer_src service_dst timer_dst model=""
+  local changed=0
+
+  if ! is_raspberry_pi_5; then
+    if model="$(device_tree_model 2>/dev/null)" && [[ -n "${model}" ]]; then
+      log "Skipping Pi 5 power monitoring (model: ${model})"
+    else
+      log "Skipping Pi 5 power monitoring (device tree model unavailable)"
+    fi
+    return 0
+  fi
+
+  if ! command -v vcgencmd >/dev/null 2>&1; then
+    log "Skipping Pi 5 power monitoring (vcgencmd not found in PATH)"
+    return 0
+  fi
+
+  log "Installing Pi 5 power/throttle textfile exporter"
+
+  service_src="$(template_src pi5/pi5-power-exporter.service)"
+  timer_src="$(template_src pi5/pi5-power-exporter.timer)"
+  service_dst="/etc/systemd/system/pi5-power-exporter.service"
+  timer_dst="/etc/systemd/system/pi5-power-exporter.timer"
+
+  if [[ "${FORCE}" -eq 1 ]] || [[ ! -f "${service_dst}" ]] || ! cmp -s "${service_src}" "${service_dst}"; then
+    install -m 0644 "${service_src}" "${service_dst}"
+    log "Installed ${service_dst}"
+    changed=1
+  fi
+  if [[ "${FORCE}" -eq 1 ]] || [[ ! -f "${timer_dst}" ]] || ! cmp -s "${timer_src}" "${timer_dst}"; then
+    install -m 0644 "${timer_src}" "${timer_dst}"
+    log "Installed ${timer_dst}"
+    changed=1
+  fi
+
+  if [[ "${changed}" -eq 1 ]]; then
+    systemctl daemon-reload
+  fi
+
+  systemctl enable --now pi5-power-exporter.timer
+  if [[ "${changed}" -eq 1 ]]; then
+    systemctl restart pi5-power-exporter.service || true
+  else
+    systemctl start pi5-power-exporter.service || true
+  fi
+
+  PI5_POWER_EXPORTER_INSTALLED=1
+}
+
 compose_has_service() {
   local svc="$1"
   docker compose config --services 2>/dev/null | grep -qx "${svc}"
@@ -505,6 +572,7 @@ do_install() {
   create_structure
   fix_grafana_permissions
   populate_templates
+  configure_pi5_power_monitoring
   add_aliases
   compose_install
 
@@ -523,6 +591,11 @@ Monitoring:     Prometheus :9090, Grafana :3002, cAdvisor :8082, smartctl :9633
 Potential reboot needed for docker group changes:
   sudo reboot
 EOF
+  if [[ "${PI5_POWER_EXPORTER_INSTALLED}" -eq 1 ]]; then
+    echo "Pi 5 power exporter: pi5-power-exporter.timer is active (15 s interval)."
+    echo "  Check: systemctl status pi5-power-exporter.timer"
+    echo "  Latest metrics: cat ${BASE_DIR}/configs/node-exporter/textfile/pi5_power.prom"
+  fi
   if [[ "${NVME_CMDLINE_NEEDS_REBOOT}" -eq 1 ]]; then
     echo "NVMe: reboot once to apply nvme_core.default_ps_max_latency_us=0 in cmdline."
   fi
@@ -585,6 +658,7 @@ while [[ $# -gt 0 ]]; do
     --restart) ACTION="restart" ;;
     --test) ACTION="test" ;;
     --test-nvme) ACTION="test"; TEST_SUITE="nvme" ;;
+    --test-pi5-power) ACTION="test"; TEST_SUITE="pi5-power" ;;
     --reset) ACTION="reset" ;;
     --force) FORCE=1 ;;
     --clean-install|--recreate-containers) CLEAN_INSTALL=1 ;;

@@ -1,0 +1,11 @@
+[Unit]
+Description=Homelab Pi 5 power/throttle metrics exporter (writes node-exporter textfile)
+ConditionPathExists=/usr/bin/vcgencmd
+ConditionPathExists=/opt/homelab/scripts/pi5-power-exporter.sh
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/opt/homelab/scripts/pi5-power-exporter.sh

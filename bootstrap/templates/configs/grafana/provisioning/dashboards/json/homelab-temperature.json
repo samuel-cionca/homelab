@@ -4,15 +4,23 @@
   "tags": ["homelab", "smartctl", "node-exporter"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
     {
+      "id": 20,
+      "type": "row",
+      "title": "SSD (SMART summary)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
       "id": 1,
       "type": "stat",
       "title": "Composite temperature",
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -41,30 +49,10 @@
       }
     },
     {
-      "id": 2,
-      "type": "timeseries",
-      "title": "NVMe temperatures",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "smartctl_device_temperature{device=\"nvme0\"}",
-          "legendFormat": "{{temperature_type}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "celsius",
-          "custom": { "drawStyle": "line", "fillOpacity": 10 }
-        }
-      }
-    },
-    {
       "id": 3,
       "type": "stat",
       "title": "SSD health",
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -89,7 +77,7 @@
       "id": 4,
       "type": "stat",
       "title": "Wear used",
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -111,11 +99,53 @@
       }
     },
     {
+      "id": 21,
+      "type": "row",
+      "title": "NVMe — SMART & hwmon (nvme_nvme0)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "NVMe: SMART types + hwmon sensors",
+      "description": "SMART from smartctl_exporter; hwmon from sysfs via node_exporter (often multiple sensor dies).",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "smartctl_device_temperature{device=\"nvme0\"}",
+          "legendFormat": "SMART {{temperature_type}}",
+          "refId": "A"
+        },
+        {
+          "expr": "node_hwmon_temp_celsius{chip=\"nvme_nvme0\"}",
+          "legendFormat": "hwmon {{sensor}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "CPU — kernel thermal zones",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
       "id": 5,
       "type": "stat",
-      "title": "CPU temperature (node_exporter)",
-      "description": "From node_exporter `node_thermal_zone_temp` (Pi: cpu-thermal; many Intel: x86_pkg_temp). If no data, search Prometheus for `node_hwmon_temp_celsius`.",
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 15 },
+      "title": "CPU (max package / SoC)",
+      "description": "`node_thermal_zone_temp` — Pi: cpu-thermal; Intel: x86_pkg_temp.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 18 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -146,13 +176,72 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "CPU thermal zones",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "title": "All OS thermal zones",
+      "description": "Every `type` the kernel exports (not only CPU).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "node_thermal_zone_temp{type=~\"cpu-thermal|x86_pkg_temp\"}",
-          "legendFormat": "{{type}}",
+          "expr": "node_thermal_zone_temp",
+          "legendFormat": "{{type}} (zone {{zone}})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "HWMon — board & duplicates (excludes NVMe chip)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Non-NVMe hwmon sensors",
+      "description": "PCIe/PMIC-style ADC and `thermal_thermal_zone0` usually overlap with SoC readings; compare to CPU row above.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "node_hwmon_temp_celsius{chip!=\"nvme_nvme0\"}",
+          "legendFormat": "{{chip}} / {{sensor}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Full hwmon dump (includes NVMe)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Every node_hwmon_temp_celsius series",
+      "description": "Single graph of all sysfs hwmon temperatures for inventory.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 42 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "node_hwmon_temp_celsius",
+          "legendFormat": "{{chip}} / {{sensor}}",
           "refId": "A"
         }
       ],

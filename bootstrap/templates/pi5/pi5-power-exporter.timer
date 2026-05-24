@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Pi 5 power/throttle metrics exporter every 15 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Unit=pi5-power-exporter.service
+
+[Install]
+WantedBy=timers.target

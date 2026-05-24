@@ -51,6 +51,8 @@ git config --local core.hooksPath ~/.config/git/hooks/homelab
 |---------|---------|
 | `sudo ./bootstrap/setup.sh --update` | Pull images and recreate containers |
 | `sudo ./bootstrap/setup.sh --backup` | Archive configs |
+| `sudo ./bootstrap/setup.sh --test-nvme` | NVMe health checks only |
+| `sudo ./bootstrap/setup.sh --test-pi5-power` | Pi 5 PMIC / under-voltage checks only |
 | `hl`, `hlstatus`, `hltest` | Shell aliases after install |
 
 ## Adding another machine
