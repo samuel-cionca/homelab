@@ -117,6 +117,122 @@ if command -v curl >/dev/null 2>&1; then
   fi
 fi
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Power-stability audit: settings that should be applied by the bootstrap.
+# Each is a deliberate trade-off (a bit more power for fewer freezes / hangs).
+# ──────────────────────────────────────────────────────────────────────────────
+echo
+echo "── Power-stability audit ──"
+
+cmdline_file=""
+for f in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+  if [[ -f "$f" ]] && head -n1 "$f" | grep -q '='; then
+    cmdline_file="$f"
+    break
+  fi
+done
+
+cmdline_has() {
+  [[ -n "${cmdline_file}" ]] && grep -qE "(^|[[:space:]])$1([[:space:]]|$)" "${cmdline_file}"
+}
+
+if [[ -n "${cmdline_file}" ]]; then
+  pass "Kernel cmdline file: ${cmdline_file}"
+else
+  fail "No kernel cmdline file (/boot/firmware/cmdline.txt) found"
+fi
+
+if cmdline_has 'pcie_aspm=off'; then
+  pass "PCIe ASPM is disabled (pcie_aspm=off) in cmdline"
+else
+  warn "pcie_aspm=off not present in cmdline; run: sudo ./bootstrap/setup.sh --install (then reboot)"
+fi
+
+shopt -s nullglob
+nonD0=()
+for f in /sys/bus/pci/devices/*/power_state; do
+  state="$(cat "$f" 2>/dev/null || echo unknown)"
+  [[ "${state}" == "D0" ]] || nonD0+=("$(basename "$(dirname "$f")"):${state}")
+done
+shopt -u nullglob
+if [[ ${#nonD0[@]} -eq 0 ]]; then
+  pass "All PCIe devices are in D0 (active)"
+else
+  warn "PCIe devices not in D0: ${nonD0[*]}"
+fi
+
+if cmdline_has 'nvme_core.default_ps_max_latency_us=0'; then
+  pass "NVMe APST disabled (nvme_core.default_ps_max_latency_us=0) in cmdline"
+else
+  warn "NVMe APST cmdline missing; run: sudo ./bootstrap/setup.sh --install (then reboot)"
+fi
+
+nvme_pwr="/sys/block/nvme0n1/device/power/control"
+if [[ -r "${nvme_pwr}" ]]; then
+  v="$(cat "${nvme_pwr}")"
+  if [[ "${v}" == "on" ]]; then
+    pass "NVMe runtime PM disabled (${nvme_pwr} = on)"
+  else
+    warn "NVMe runtime PM is '${v}' (expected 'on'); check udev rule"
+  fi
+fi
+
+bt_ertm="/sys/module/bluetooth/parameters/disable_ertm"
+if [[ -r "${bt_ertm}" ]]; then
+  if [[ "$(cat "${bt_ertm}")" == "Y" ]]; then
+    pass "Bluetooth ERTM disabled (disable_ertm=Y)"
+  else
+    warn "Bluetooth ERTM enabled (disable_ertm=N); reboot to apply modprobe drop-in"
+  fi
+fi
+
+if command -v iw >/dev/null 2>&1; then
+  wlan="$(iw dev 2>/dev/null | awk '/Interface/ {print $2; exit}')"
+  if [[ -n "${wlan}" ]]; then
+    ps="$(iw dev "${wlan}" get power_save 2>/dev/null | awk -F': ' '{print $2}')"
+    if [[ "${ps}" == "off" ]]; then
+      pass "Wi-Fi powersave is off on ${wlan}"
+    else
+      warn "Wi-Fi powersave is '${ps}' on ${wlan} (expected off)"
+    fi
+  fi
+fi
+
+nm_drop="/etc/NetworkManager/conf.d/wifi-powersave.conf"
+if [[ -f "${nm_drop}" ]] && grep -q 'wifi.powersave[[:space:]]*=[[:space:]]*2' "${nm_drop}"; then
+  pass "NetworkManager wifi-powersave dropin present (wifi.powersave=2)"
+else
+  warn "NetworkManager wifi-powersave dropin missing or not set to 2; run: sudo ./bootstrap/setup.sh --install"
+fi
+if [[ -f /etc/NetworkManager/conf.d/default-wifi-powersave-on.conf ]]; then
+  warn "Debian's default-wifi-powersave-on.conf is also present (redundant with homelab dropin; harmless)"
+fi
+
+gov="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown)"
+case "${gov}" in
+  ondemand|schedutil|performance)
+    pass "CPU governor: ${gov}"
+    ;;
+  powersave)
+    warn "CPU governor is 'powersave' — may cause sluggishness; consider 'ondemand'"
+    ;;
+  unknown)
+    warn "Could not read CPU governor"
+    ;;
+  *)
+    warn "CPU governor is '${gov}' (non-standard)"
+    ;;
+esac
+
+if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq ]]; then
+  mhz=$(( $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq) / 1000 ))
+  if (( mhz >= 2400 )); then
+    pass "CPU max frequency: ${mhz} MHz"
+  else
+    warn "CPU max frequency capped at ${mhz} MHz (Pi 5 default is 2400)"
+  fi
+fi
+
 echo
 echo "==> Pi 5 power summary: ${PASS} passed, ${WARN} warnings, ${FAIL} failed, ${SKIP} skipped"
 if [[ "${FAIL}" -gt 0 ]]; then

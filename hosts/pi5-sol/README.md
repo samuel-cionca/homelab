@@ -26,6 +26,7 @@ Install detects **Raspberry Pi 5** via `/proc/device-tree/model`. On Pi 5 it:
 
 1. Writes `/etc/NetworkManager/conf.d/wifi-powersave.conf` (`wifi.powersave = 2`) and restarts **NetworkManager** when that service is installed and active.
 2. Writes `/etc/modprobe.d/99-homelab-bluetooth-disable-ertm.conf` with `options bluetooth disable_ertm=Y` (**reboot** once so the bluetooth module picks it up if it was already loaded).
+3. Ensures `pcie_aspm=off` is present in `/boot/firmware/cmdline.txt` (**reboot** once to apply). This forces all PCIe links into D0 — a wider hammer than `nvme_core.default_ps_max_latency_us=0` alone, but it also covers the Wi-Fi/Bluetooth combo chip and the RP1 southbridge. Disable by removing the token from the cmdline file manually if you'd rather not pay the few hundred mW.
 
 Override templates via `systems/pi5-sol/pi5/wifi-powersave.conf` and `systems/pi5-sol/pi5/bluetooth-disable-ertm.conf`.
 
@@ -34,6 +35,7 @@ Verify after reboot (**interface name** may vary; `wlan0` is typical):
 ```bash
 iw dev wlan0 get power_save
 cat /sys/module/bluetooth/parameters/disable_ertm
+grep pcie_aspm /boot/firmware/cmdline.txt
 ```
 
 Expected interaction (commands and outputs in order):
@@ -43,6 +45,14 @@ iw dev wlan0 get power_save
 Power save: off
 cat /sys/module/bluetooth/parameters/disable_ertm
 Y
+grep pcie_aspm /boot/firmware/cmdline.txt
+… pcie_aspm=off …
+```
+
+A single audit command covers all of the above plus NVMe + governor + ASPM device states:
+
+```bash
+sudo ./bootstrap/setup.sh --test-pi5-power
 ```
 
 ## Pi 5 power monitoring (PMIC + throttling)

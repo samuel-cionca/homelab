@@ -11,6 +11,7 @@ GRAFANA_GID=472
 FORCE=0
 CLEAN_INSTALL=0
 NVME_CMDLINE_NEEDS_REBOOT=0
+PCIE_ASPM_CMDLINE_NEEDS_REBOOT=0
 PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=0
 PI5_POWER_EXPORTER_INSTALLED=0
 HOST=""
@@ -301,13 +302,46 @@ fix_grafana_permissions() {
   chown -R "${GRAFANA_UID}:${GRAFANA_GID}" "${BASE_DIR}/configs/grafana/data"
 }
 
+cmdline_path() {
+  local f
+  for f in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+    if [[ -f "${f}" ]] && head -n1 "${f}" | grep -q '='; then
+      echo "${f}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ensure_cmdline_param "key=value"
+# Returns 0 if the param is already present, 1 if it had to be added (reboot needed).
+# When the same key already exists with a different value, replaces it in place.
+ensure_cmdline_param() {
+  local param="$1"
+  local key="${param%%=*}"
+  local cmdline
+  cmdline="$(cmdline_path)" || { log "No kernel cmdline file found; cannot apply ${param}"; return 0; }
+
+  if grep -qE "(^|[[:space:]])${param//./\\.}([[:space:]]|$)" "${cmdline}"; then
+    log "Kernel param already present in ${cmdline}: ${param}"
+    return 0
+  fi
+
+  if grep -qE "(^|[[:space:]])${key//./\\.}=[^[:space:]]+" "${cmdline}"; then
+    sed -i -E "s|(^|[[:space:]])${key//./\\.}=[^[:space:]]+|\1${param}|g" "${cmdline}"
+    log "Updated ${cmdline}: ${key}= -> ${param} (reboot required)"
+    return 1
+  fi
+
+  sed -i "1 s|\$| ${param}|" "${cmdline}"
+  log "Added ${param} to ${cmdline} (reboot required)"
+  return 1
+}
+
 configure_nvme_power() {
   local udev_src="$(template_src nvme/99-nvme-no-idle.rules)"
   local udev_dst="/etc/udev/rules.d/99-homelab-nvme-no-idle.rules"
   local power_sysfs="/sys/block/nvme0n1/device/power/control"
-  local cmdline=""
-  local cmdline_param="nvme_core.default_ps_max_latency_us=0"
-  local cmdline_updated=0
 
   if [[ ! -b /dev/nvme0n1 ]]; then
     log "No NVMe block device; skipping NVMe power tuning"
@@ -333,19 +367,7 @@ configure_nvme_power() {
     log "Set ${power_sysfs} to on"
   fi
 
-  for cmdline in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
-    [[ -f "${cmdline}" ]] || continue
-    if grep -qF "${cmdline_param}" "${cmdline}"; then
-      log "Kernel param already present in ${cmdline}"
-    else
-      sed -i "s/$/ ${cmdline_param}/" "${cmdline}"
-      log "Added ${cmdline_param} to ${cmdline} (reboot required)"
-      cmdline_updated=1
-    fi
-    break
-  done
-
-  if [[ "${cmdline_updated}" -eq 1 ]]; then
+  if ! ensure_cmdline_param "nvme_core.default_ps_max_latency_us=0"; then
     NVME_CMDLINE_NEEDS_REBOOT=1
   fi
 }
@@ -413,6 +435,18 @@ configure_pi5_wifi_bt_stability() {
   if [[ "${bluetooth_changed}" -eq 0 ]] && [[ -r /sys/module/bluetooth/parameters/disable_ertm ]] && [[ "$(cat /sys/module/bluetooth/parameters/disable_ertm 2>/dev/null)" != "Y" ]]; then
     PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT=1
     log "Bluetooth module loaded without disable_ertm=Y; reboot to apply ${bluetooth_dst}"
+  fi
+}
+
+configure_pi5_pcie_aspm() {
+  if ! is_raspberry_pi_5; then
+    log "Skipping PCIe ASPM tuning (not a Pi 5)"
+    return 0
+  fi
+
+  log "Ensuring PCIe ASPM is disabled (pcie_aspm=off) for Pi 5 stability"
+  if ! ensure_cmdline_param "pcie_aspm=off"; then
+    PCIE_ASPM_CMDLINE_NEEDS_REBOOT=1
   fi
 }
 
@@ -566,6 +600,7 @@ do_install() {
   resolve_host
   install_host_tools
   configure_nvme_power
+  configure_pi5_pcie_aspm
   configure_pi5_wifi_bt_stability
   install_neovim_latest_stable
   install_docker_if_missing
@@ -598,6 +633,9 @@ EOF
   fi
   if [[ "${NVME_CMDLINE_NEEDS_REBOOT}" -eq 1 ]]; then
     echo "NVMe: reboot once to apply nvme_core.default_ps_max_latency_us=0 in cmdline."
+  fi
+  if [[ "${PCIE_ASPM_CMDLINE_NEEDS_REBOOT}" -eq 1 ]]; then
+    echo "PCIe ASPM: reboot once to apply pcie_aspm=off in cmdline."
   fi
   if [[ "${PI5_BLUETOOTH_MODPROBE_NEEDS_REBOOT}" -eq 1 ]]; then
     echo "Pi 5 Bluetooth: reboot once so disable_ertm=Y is applied (/etc/modprobe.d/99-homelab-bluetooth-disable-ertm.conf)."
