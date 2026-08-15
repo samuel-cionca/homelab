@@ -1,0 +1,5 @@
+---
+pve:
+  url: http://192.168.178.20:8006
+  token: "{{HOMEPAGE_VAR_PROXMOX_TOKEN}}"
+  secret: "{{HOMEPAGE_VAR_PROXMOX_SECRET}}"

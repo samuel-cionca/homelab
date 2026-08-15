@@ -1,0 +1,378 @@
+---
+# Homepage services
+# https://gethomepage.dev/configs/services/
+
+# ============================================================
+# Home
+# ============================================================
+
+# - Home:
+#     - Weather:
+#         icon: "{{HOMEPAGE_VAR_ASSISTANT_WEATHER_ICON}}"
+#         href: "{{HOMEPAGE_VAR_HOME_ASSISTANT_HOST}}"
+#         description: Weather
+#         widget:
+#           type: homeassistant
+#           url: "{{HOMEPAGE_VAR_HOME_ASSISTANT_HOST}}"
+#           key: "{{HOMEPAGE_VAR_HOME_ASSISTANT_API_KEY}}"
+#           custom:
+#             - state: weather.forecast_home
+#               label: temp
+#               value: "{attributes.temperature} {attributes.temperature_unit}"
+#
+#             - state: weather.forecast_home
+#               label: rain
+#               value: "{attributes?.precipitation} {attributes.precipitation_unit}"
+#
+#             - state: weather.forecast_home
+#               label: state
+#               value: "{state}"
+#
+#     - Ecovacs:
+#         icon: mdi-robot-vacuum
+#         href: "{{HOMEPAGE_VAR_HOME_ASSISTANT_HOST}}"
+#         description: DEEBOT T30S COMBO COMPLETE
+#         widget:
+#           type: homeassistant
+#           url: "{{HOMEPAGE_VAR_HOME_ASSISTANT_HOST}}"
+#           key: "{{HOMEPAGE_VAR_HOME_ASSISTANT_API_KEY}}"
+#           custom:
+#             - state: vacuum.samuel_cionca_hotmail_com
+#               label: status
+#
+#             - state: sensor.samuel_cionca_hotmail_com_battery
+#               label: battery
+#
+#             - state: sensor.samuel_cionca_hotmail_com_area_cleaned
+#               label: cleaned
+#
+#             - state: sensor.samuel_cionca_hotmail_com_station_state
+#               label: station
+
+# ============================================================
+# Media
+# ============================================================
+
+- Media:
+    # - Jellyfin:
+    #     icon: jellyfin
+    #     href: "{{HOMEPAGE_VAR_JELLYFIN_HOST}}"
+    #     description: Movies, series, and music
+    #     widget:
+    #       type: jellyfin
+    #       url: "{{HOMEPAGE_VAR_JELLYFIN_HOST}}"
+    #       key: "{{HOMEPAGE_VAR_JELLYFIN_API_KEY}}"
+    #       version: 1
+    #       enableBlocks: true
+    #       enableNowPlaying: true
+    #       enableUser: true
+    #       enableMediaControl: true
+    #       showEpisodeNumber: true
+    #       expandOneStreamToTwoRows: true
+
+    - Immich:
+        icon: immich
+        href: "{{HOMEPAGE_VAR_IMMICH_HOST}}"
+        description: Photos and videos
+        widget:
+          type: immich
+          url: "{{HOMEPAGE_VAR_IMMICH_HOST}}"
+          key: "{{HOMEPAGE_VAR_IMMICH_API_KEY}}"
+          version: 2
+
+# ============================================================
+# Infrastructure
+# ============================================================
+
+- Infrastructure:
+    - Network:
+        - Fritzbox:
+            icon: fritzbox
+            href: "{{HOMEPAGE_VAR_FRITZBOX_HOST}}"
+            description: Router and network
+            widget:
+              type: fritzbox
+              url: "{{HOMEPAGE_VAR_FRITZBOX_HOST}}"
+
+        - Pi-hole:
+            icon: pi-hole
+            href: "{{HOMEPAGE_VAR_PI_HOLE_HREF}}"
+            description: DNS and ad blocking
+            widget:
+              type: pihole
+              url: "{{HOMEPAGE_VAR_PI_HOLE_HOST}}"
+              version: 6
+              key: "{{HOMEPAGE_VAR_PI_HOLE_API_KEY}}"
+
+        - Nginx Proxy Manager:
+            icon: nginx-proxy-manager
+            href: "{{HOMEPAGE_VAR_NGINX_PROXY_MANAGER_HOST}}"
+            description: Reverse proxy
+            widget:
+              type: npm
+              url: "{{HOMEPAGE_VAR_NGINX_PROXY_MANAGER_HOST}}"
+              username: "{{HOMEPAGE_VAR_NGINX_PROXY_MANAGER_USERNAME}}"
+              password: "{{HOMEPAGE_VAR_NGINX_PROXY_MANAGER_PASSWORD}}"
+
+    - Operations:
+        - Uptime Kuma:
+            icon: uptime-kuma
+            href: "{{HOMEPAGE_VAR_UPTIME_KUMA}}"
+            description: Uptime monitoring
+            widget:
+              type: uptimekuma
+              url: "{{HOMEPAGE_VAR_UPTIME_KUMA}}"
+              slug: statuspage
+        - Grafana:
+            icon: grafana
+            href: "{{HOMEPAGE_VAR_GRAFANA_HOST}}"
+            description: Monitoring and dashboards
+            widget:
+              type: grafana
+              url: "{{HOMEPAGE_VAR_GRAFANA_HOST}}"
+              version: 1
+              alerts: alertmanager
+              username: admin
+              password: "{{HOMEPAGE_VAR_GRAFANA_API_KEY}}"
+
+        - Portainer:
+            icon: portainer
+            href: "{{HOMEPAGE_VAR_PORTAINER_HOST}}"
+            description: Docker management
+            widget:
+              type: portainer
+              url: "{{HOMEPAGE_VAR_PORTAINER_HOST}}"
+              env: 3
+              kubernetes: false
+              key: "{{HOMEPAGE_VAR_PORTAINER_API_KEY}}"
+
+        - Backrest:
+            icon: backrest
+            href: "{{HOMEPAGE_VAR_BACKREST_HOST}}"
+            description: Backup management
+            widget:
+              type: backrest
+              url: "{{HOMEPAGE_VAR_BACKREST_HOST}}"
+              username: "{{HOMEPAGE_VAR_BACKREST_USER}}"
+              password: "{{HOMEPAGE_VAR_BACKREST_PW}}"
+              fields:
+                - num_success_latest
+                - num_success_30
+                # - num_failure_latest
+                - num_failure_30
+                - bytes_added_30
+
+# ============================================================
+# Development
+# ============================================================
+
+- Development:
+    - Gitea:
+        icon: gitea
+        href: "{{HOMEPAGE_VAR_GITTEA_HOST}}"
+        description: Git repositories
+        widget:
+          type: gitea
+          url: "{{HOMEPAGE_VAR_GITTEA_HOST}}"
+          key: "{{HOMEPAGE_VAR_GITTEA_API_KEY}}"
+
+# ============================================================
+# Hosts
+# ============================================================
+
+- Hosts:
+    # --------------------------------------------------------
+    # Io - Raspberry Pi 5
+    # --------------------------------------------------------
+
+    - Io:
+        - Info:
+            icon: linux
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: info
+
+        - CPU:
+            icon: linux
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: cpu
+              refreshInterval: 5000
+              pointsLimit: 15
+
+        - Memory:
+            icon: mdi-memory
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: memory
+
+        - Network:
+            icon: mdi-lan
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: network:eth0
+
+        - Storage:
+            icon: mdi-harddisk
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: fs:/
+
+        - NVMe I/O:
+            icon: mdi-harddisk
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: disk:nvme0n1
+
+        - CPU temperature:
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: sensor:cpu_thermal 0
+
+        - NVMe temperature:
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: sensor:Composite
+
+        - RP1 temperature:
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: sensor:rpi_adc 0
+
+        - Processes:
+            icon: mdi-chart-timeline-variant
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: process
+
+        - Containers:
+            icon: docker
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_IO_HOST}}"
+              version: 4
+              metric: containers
+
+    # --------------------------------------------------------
+    # Jupiter - Workstation
+    # --------------------------------------------------------
+
+    - Jupiter:
+        - Info:
+            icon: linux
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: info
+
+        - CPU:
+            icon: amd
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: cpu
+
+        - Memory:
+            icon: mdi-memory
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: memory
+
+        - Network:
+            icon: mdi-lan
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: network:wlp9s0
+
+        - GTX 970:
+            icon: nvidia
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: gpu:nvidia0
+
+        - AMD iGPU:
+            icon: amd
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: gpu:amd0
+
+        - Root filesystem:
+            icon: mdi-harddisk
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: fs:/
+
+        - Home filesystem:
+            icon: mdi-harddisk
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: fs:/home
+
+        - NVMe I/O:
+            icon: mdi-harddisk
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: disk:nvme0n1
+
+        - CPU temperature:
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: sensor:Tctl
+
+        - NVMe temperature:
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: sensor:Composite
+
+        - Processes:
+            icon: mdi-format-list-bulleted
+            widget:
+              type: glances
+              url: "{{HOMEPAGE_VAR_GLANCES_JUPITER_HOST}}"
+              version: 4
+              metric: process

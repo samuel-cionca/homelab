@@ -1,0 +1,209 @@
+/* Give the widget area a real gap */
+#widgets-wrap {
+  gap: 0.75rem !important;
+}
+
+/* Io + Jupiter */
+#widgets-wrap > .information-widget-glances {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
+
+  /*
+   * Both share the whole row equally.
+   * If there isn't enough room for two 420px cards,
+   * they automatically stack.
+   */
+  flex: 1 1 420px !important;
+  max-width: none !important;
+  align-self: stretch !important;
+}
+
+/* Search + datetime always get their own row */
+#widgets-wrap > #information-widgets-right {
+  flex: 0 0 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+/* services.yaml */
+/* ---------------------------------------------------------
+ * General spacing
+ * --------------------------------------------------------- */
+
+.services-list {
+  gap: 0.65rem !important;
+}
+
+
+/* ---------------------------------------------------------
+ * Service cards
+ * --------------------------------------------------------- */
+
+.service > div {
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.service > div:hover {
+  background: rgba(255, 255, 255, 0.075) !important;
+  border-color: rgba(255, 255, 255, 0.14);
+
+  transform: translateY(-1px);
+}
+
+
+/* ---------------------------------------------------------
+ * Glances header cards: Io + Jupiter
+ * --------------------------------------------------------- */
+
+#widgets-wrap {
+  gap: 0.75rem !important;
+}
+
+#widgets-wrap > .information-widget-glances {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
+
+  flex: 1 1 420px !important;
+  max-width: none !important;
+}
+
+/* Search + datetime go onto their own row */
+#widgets-wrap > #information-widgets-right {
+  flex: 0 0 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+
+/* ---------------------------------------------------------
+ * Mobile
+ * --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  #widgets-wrap > .information-widget-glances {
+    flex-basis: 100% !important;
+  }
+}
+
+/* ---------------------------------------------------------
+ * Glances health status
+ * --------------------------------------------------------- */
+
+#widgets-wrap > .information-widget-glances {
+  position: relative;
+
+  transition:
+    background 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+
+/* ---------------------------------------------------------
+ * Overall host status
+ * --------------------------------------------------------- */
+
+/* Nominal */
+#widgets-wrap > .information-widget-glances[data-health="nominal"] {
+  --health-color: 74 222 128;
+
+  border-color: rgb(var(--health-color) / 0.35) !important;
+  background: rgb(var(--health-color) / 0.045) !important;
+}
+
+/* Warning */
+#widgets-wrap > .information-widget-glances[data-health="warning"] {
+  --health-color: 250 204 21;
+
+  border-color: rgb(var(--health-color) / 0.5) !important;
+  background: rgb(var(--health-color) / 0.06) !important;
+
+  box-shadow: 0 0 18px rgb(var(--health-color) / 0.05);
+}
+
+/* Critical */
+#widgets-wrap > .information-widget-glances[data-health="critical"] {
+  --health-color: 248 113 113;
+
+  border-color: rgb(var(--health-color) / 0.65) !important;
+  background: rgb(var(--health-color) / 0.075) !important;
+
+  box-shadow: 0 0 22px rgb(var(--health-color) / 0.08);
+}
+
+
+/* ---------------------------------------------------------
+ * Status dot
+ * --------------------------------------------------------- */
+
+#widgets-wrap > .information-widget-glances[data-health]::after {
+  content: "";
+
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+
+  width: 0.5rem;
+  height: 0.5rem;
+
+  border-radius: 9999px;
+
+  background: rgb(var(--health-color));
+  box-shadow: 0 0 8px rgb(var(--health-color) / 0.65);
+}
+
+
+/* ---------------------------------------------------------
+ * Individual metrics
+ * --------------------------------------------------------- */
+
+.information-widget-glances
+  .information-widget-resource[data-health="nominal"] {
+  --metric-color: 74 222 128;
+}
+
+.information-widget-glances
+  .information-widget-resource[data-health="warning"] {
+  --metric-color: 250 204 21;
+}
+
+.information-widget-glances
+  .information-widget-resource[data-health="critical"] {
+  --metric-color: 248 113 113;
+}
+
+
+/* Icon */
+.information-widget-glances
+  .information-widget-resource[data-health]
+  .resource-icon {
+  color: rgb(var(--metric-color)) !important;
+
+  transition: color 200ms ease;
+}
+
+
+/* Usage bar */
+.information-widget-glances
+  .information-widget-resource[data-health]
+  .resource-usage
+  > div {
+  background: rgb(var(--metric-color)) !important;
+
+  transition:
+    width 1000ms ease,
+    background 200ms ease;
+}

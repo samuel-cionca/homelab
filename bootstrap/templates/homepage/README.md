@@ -1,5 +1,3 @@
-Place Homepage config files here (for example `settings.yaml`, `services.yaml`, and `widgets.yaml`).
+Homepage YAML/JS/CSS live in `bootstrap/templates/configs/homepage/` and are always synced to `/opt/homelab/configs/homepage/` on `--install` / `--sync`.
 
-During install, this folder is copied into:
-
-- `/opt/homelab/configs/homepage/`
+Do not put API keys in these files — use `HOMEPAGE_VAR_*` entries in `hosts/<name>/secrets.env`.
