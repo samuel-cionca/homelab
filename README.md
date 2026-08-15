@@ -1,6 +1,6 @@
 # Homelab
 
-Reproducible Docker homelab bootstrap: shared **templates**, **per-host** env, and optional **system** overrides.
+Reproducible Docker homelab bootstrap: shared **templates**, **per-host** env, and one compose **stack** per service group.
 
 ## Layout
 
@@ -8,13 +8,28 @@ Reproducible Docker homelab bootstrap: shared **templates**, **per-host** env, a
 homelab/
 ├── bootstrap/
 │   ├── setup.sh              # installer (run from repo root)
-│   └── templates/            # canonical files → /opt/homelab
+│   └── templates/            # scripts, prometheus/grafana, homepage yaml
+├── stacks/
+│   ├── core/                 # → /opt/homelab/docker-compose.yml
+│   ├── immich/               # → /opt/homelab/stacks/immich/
+│   ├── npm/
+│   ├── gitea/
+│   ├── n8n/
+│   ├── seafile/
+│   ├── backrest/
+│   └── tools/                # dead-link-checker
 ├── hosts/<name>/             # host.env, secrets.env (gitignored when real)
-├── systems/<name>/           # optional overrides (mirror templates/ paths)
+├── systems/<name>/           # optional overrides (mirror templates/ or stacks/ paths)
 └── docs/
 ```
 
-Deployed stack path: `/opt/homelab` (Docker Compose + configs).
+Git is the source of truth. Portainer stays as a UI only — do not create or update stacks there.
+
+Deployed paths:
+
+- Compose (core): `/opt/homelab/docker-compose.yml`
+- Compose (other): `/opt/homelab/stacks/<name>/`
+- Data: `/opt/<service>/` or `/opt/homelab/configs/`
 
 ## Quick start (pi5-sol)
 
@@ -25,6 +40,12 @@ cp hosts/pi5-sol/secrets.env.example hosts/pi5-sol/secrets.env
 # edit both files, then:
 sudo ./bootstrap/setup.sh --host pi5-sol --install
 sudo ./bootstrap/setup.sh --test-nvme
+```
+
+Day-two (after git edits):
+
+```bash
+sudo ./bootstrap/setup.sh --sync
 ```
 
 If `hostname` matches a folder under `hosts/` (this Pi: `sol` → `hosts/sol` → `pi5-sol`), `--host` can be omitted.
@@ -49,8 +70,9 @@ git config --local core.hooksPath ~/.config/git/hooks/homelab
 
 | Command | Purpose |
 |---------|---------|
+| `sudo ./bootstrap/setup.sh --sync` | Copy managed files from git and `compose up` every stack |
 | `sudo ./bootstrap/setup.sh --update` | Pull images and recreate containers |
-| `sudo ./bootstrap/setup.sh --backup` | Archive configs |
+| `sudo ./bootstrap/setup.sh --backup` | Archive configs (not Immich/Seafile/Gitea libraries) |
 | `sudo ./bootstrap/setup.sh --test-nvme` | NVMe health checks only |
 | `sudo ./bootstrap/setup.sh --test-pi5-power` | Pi 5 PMIC / under-voltage checks only |
 | `hl`, `hlstatus`, `hltest` | Shell aliases after install |
@@ -58,7 +80,7 @@ git config --local core.hooksPath ~/.config/git/hooks/homelab
 ## Adding another machine
 
 1. `hosts/newbox/` — `host.env.example`, `secrets.env.example`, `README.md`
-2. Optional `systems/newbox/` — files that override `bootstrap/templates/` (same relative paths)
+2. Optional `systems/newbox/` — files that override `bootstrap/templates/` or `stacks/` (same relative paths)
 3. `sudo ./bootstrap/setup.sh --host newbox --install`
 
 ## Migrating from `shell-scripts/homelab-setup`

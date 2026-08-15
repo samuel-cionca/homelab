@@ -101,3 +101,57 @@ vcgencmd get_throttled
 Any non-zero bit 0 (current) or bit 16 (since boot) means under-voltage. The `Pi 5 power & throttling` Grafana dashboard plots both alongside `EXT5V_V` so you can correlate a dip with the moment of the freeze.
 
 There is no Linux interface that reports the input current at the USB-C port. If you need actual amps drawn from the wall, use an inline USB-C power meter. Everything else (rail voltages, internal currents, under-voltage flags) is captured by the exporter above.
+
+## Jellyfin (LAN only)
+
+Jellyfin runs with host networking and listens on port **8096**. Access it from any device on your LAN:
+
+| URL | Notes |
+|-----|-------|
+| `http://jellyfin.home:8096` | Requires Pi-hole as DNS (local record → `192.168.178.11`) |
+| `http://192.168.178.11:8096` | Direct IP |
+| `http://sol:8096` | Hostname, if it resolves on your LAN |
+
+- **Admin username:** `root`
+- **Password:** stored in local `secrets.env` as `JELLYFIN_ADMIN_PASSWORD` (never commit)
+- **Homepage tile:** `http://192.168.178.11:3000` (Media → Jellyfin)
+- **Do not port-forward 8096** on your router — LAN access only
+
+### Adding movies and TV shows
+
+Jellyfin does not upload files through the browser. Copy media onto the Pi, then Jellyfin scans the folders:
+
+| Library | Folder on the Pi |
+|---------|------------------|
+| Movies | `/opt/homelab/media/movies/` |
+| Series | `/opt/homelab/media/series/` |
+| Music | `/opt/homelab/media/music/` |
+
+**From your PC (SCP / SFTP):**
+
+```bash
+scp "My Movie.mkv" osic@192.168.178.11:/opt/homelab/media/movies/
+```
+
+Use FileZilla, Cyberduck, or any SFTP client with the same path if you prefer a GUI.
+
+**Naming tips:** movies as `Movie Name (2024)/Movie Name (2024).mkv`; series as `Show Name/Season 01/Show Name S01E01.mkv`.
+
+After copying files, open Jellyfin → **Dashboard → Libraries** → **Scan All Libraries** (or wait for the automatic scan).
+
+### Troubleshooting
+
+**Homepage shows "Host validation failed"**
+
+Homepage v1+ requires `HOMEPAGE_ALLOWED_HOSTS` when accessed by IP. That value lives in `host.env` and is deployed into `/opt/homelab/.env` / the core compose file. After changing it:
+
+```bash
+sudo ./bootstrap/setup.sh --sync
+```
+
+**Jellyfin page looks blank or "nothing happens"**
+
+- Use **http://** (not https): `http://192.168.178.11:8096/web/`
+- Wait 10–20 s on first load (Pi 5 can be slow to serve JS bundles)
+- Device must be on the same LAN as `sol` (192.168.178.x)
+- No restart needed if `docker ps` shows Jellyfin healthy
