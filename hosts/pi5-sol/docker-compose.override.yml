@@ -1,0 +1,7 @@
+services:
+  jellyfin:
+    network_mode: !reset null
+    ports:
+      - "8096:8096"
+    devices:
+      - /dev/dri:/dev/dri

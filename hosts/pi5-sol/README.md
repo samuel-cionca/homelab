@@ -117,6 +117,21 @@ Jellyfin runs with host networking and listens on port **8096**. Access it from 
 - **Homepage tile:** `http://192.168.178.11:3000` (Media → Jellyfin)
 - **Do not port-forward 8096** on your router — LAN access only
 
+### Compose override (hardware transcoding)
+
+The default in `stacks/core` uses `network_mode: host`. This host ships an optional override at `hosts/pi5-sol/docker-compose.override.yml` that:
+
+- Publishes Jellyfin on `8096:8096` (bridged networking)
+- Passes through `/dev/dri` for Pi 5 hardware transcoding
+
+Bootstrap copies it to `/opt/homelab/docker-compose.override.yml` on install. Deploy or refresh with:
+
+```bash
+sudo ./bootstrap/setup.sh --sync
+```
+
+If `/opt/homelab/docker-compose.override.yml` already exists and you changed the git copy, use `--install --force` once so setup overwrites it.
+
 ### Adding movies and TV shows
 
 Jellyfin does not upload files through the browser. Copy media onto the Pi, then Jellyfin scans the folders:
