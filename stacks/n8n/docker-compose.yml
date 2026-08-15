@@ -1,0 +1,29 @@
+name: n8n
+
+# Traefik was removed: Nginx Proxy Manager owns ports 80/443.
+# Point an NPM proxy host at http://172.17.0.1:5678 (or the Pi LAN IP).
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_HOST: ${SUBDOMAIN}.${DOMAIN_NAME}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      NODE_ENV: production
+      N8N_PROXY_HOPS: "1"
+      N8N_PUSH_BACKEND: websocket
+      WEBHOOK_URL: https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+      TZ: ${GENERIC_TIMEZONE}
+      N8N_RESTRICT_FILE_ACCESS_TO: /files
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /opt/n8n/local-files:/files
+
+volumes:
+  n8n_data:
+    name: n8n_n8n_data

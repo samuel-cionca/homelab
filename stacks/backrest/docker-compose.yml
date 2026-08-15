@@ -1,0 +1,21 @@
+name: backrest
+
+services:
+  backrest:
+    image: garethgeorge/backrest:latest
+    container_name: backrest
+    hostname: backrest
+    restart: unless-stopped
+    ports:
+      - "9898:9898"
+    volumes:
+      - /opt/backrest/backrest/data:/data
+      - /opt/backrest/backrest/config:/config
+      - /opt/backrest/backrest/cache:/cache
+      - /opt:/userdata/opt:ro
+      - /mnt/backups:/mnt/backups
+    environment:
+      BACKREST_DATA: /data
+      BACKREST_CONFIG: /config/config.json
+      XDG_CACHE_HOME: /cache
+      TZ: ${TZ}
