@@ -5,6 +5,7 @@
 !**/.env.example
 hosts/*/host.env
 hosts/*/secrets.env
+**/stack.env
 
 # Runtime / live data (lives on the machine under /opt/homelab)
 *.db
