@@ -4,8 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEMPLATES_DIR="${SCRIPT_DIR}/templates"
+STACKS_DIR="${REPO_ROOT}/stacks"
 
 BASE_DIR="/opt/homelab"
+# shellcheck disable=SC1091
+source "${TEMPLATES_DIR}/scripts/lib/stacks.sh"
 GRAFANA_UID=472
 GRAFANA_GID=472
 FORCE=0
@@ -24,10 +27,11 @@ ACTION="install"
 usage() {
   cat <<'EOF'
 Usage:
-  ./bootstrap/setup.sh [--host NAME] [--install|--update|--backup|--restart|--test|--test-nvme|--reset] [--force] [--clean-install]
+  ./bootstrap/setup.sh [--host NAME] [--install|--sync|--update|--backup|--restart|--test|--test-nvme|--reset] [--force] [--clean-install]
 
 Actions:
   --install   Install tools, Docker (if missing), NVMe tuning, Pi 5 WiFi/BT tweaks, Neovim, and homelab stack (default)
+  --sync      Copy managed compose/scripts from git and start all stacks (no apt/host tuning)
   --update    Pull and recreate containers, then prune old images
   --backup    Create config backup archive
   --restart   Restart containers
@@ -45,6 +49,7 @@ Flags:
 
 Examples:
   sudo ./bootstrap/setup.sh --host pi5-sol --install
+  sudo ./bootstrap/setup.sh --sync
   sudo ./bootstrap/setup.sh --test-nvme
 EOF
 }
@@ -184,11 +189,23 @@ create_structure() {
     "${BASE_DIR}/configs/grafana/provisioning/dashboards/json" \
     "${BASE_DIR}/configs/smartctl-exporter" \
     "${BASE_DIR}/configs/node-exporter/textfile" \
+    "${BASE_DIR}/scripts/lib" \
+    "${BASE_DIR}/stacks" \
     "${BASE_DIR}/data/backups" \
     "${BASE_DIR}/media/movies" \
     "${BASE_DIR}/media/series" \
     "${BASE_DIR}/media/music" \
-    "${BASE_DIR}/media/photos"
+    "${BASE_DIR}/media/photos" \
+    /opt/immich/library \
+    /opt/immich/postgres \
+    /opt/n8n/local-files \
+    /opt/gitea/gitea \
+    /opt/gitea/postgres \
+    /opt/nginx-proxy-manager/data \
+    /opt/nginx-proxy-manager/letsencrypt \
+    /opt/backrest/backrest/data \
+    /opt/backrest/backrest/config \
+    /opt/backrest/backrest/cache
 }
 
 copy_file_if_needed() {
@@ -217,6 +234,21 @@ copy_script_if_needed() {
   log "Wrote script: ${dst}"
 }
 
+# Managed files always overwrite live copies. Git is the source of truth.
+sync_managed_file() {
+  local src="$1"
+  local dst="$2"
+  install -D -m 0644 "${src}" "${dst}"
+  log "Wrote: ${dst}"
+}
+
+sync_managed_script() {
+  local src="$1"
+  local dst="$2"
+  install -D -m 0755 "${src}" "${dst}"
+  log "Wrote script: ${dst}"
+}
+
 template_src() {
   local rel="$1"
   local sys="${SYSTEMS_DIR}/${rel}"
@@ -227,59 +259,129 @@ template_src() {
   fi
 }
 
+stack_src() {
+  local rel="$1"
+  local sys="${SYSTEMS_DIR}/stacks/${rel}"
+  if [[ -n "${SYSTEMS_DIR}" && -e "${sys}" ]]; then
+    echo "${sys}"
+  else
+    echo "${STACKS_DIR}/${rel}"
+  fi
+}
+
+# Append KEY=VAL from src when dest does not already have KEY.
+merge_env_keys() {
+  local src="$1"
+  local dest="$2"
+  local line key
+
+  [[ -f "${src}" ]] || return 0
+  touch "${dest}"
+  chmod 600 "${dest}"
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+    [[ "${line}" =~ ^[[:space:]]*$ ]] && continue
+    key="${line%%=*}"
+    if grep -qE "^${key}=" "${dest}"; then
+      continue
+    fi
+    printf '%s\n' "${line}" >>"${dest}"
+    log "Added missing env key: ${key}"
+  done <"${src}"
+}
+
 create_env_file() {
   local env_file="${BASE_DIR}/.env"
   local tmp
 
   if [[ -f "${env_file}" && "${FORCE}" -eq 0 ]]; then
-    log ".env already exists, keeping current secrets"
-    return 0
+    log ".env already exists, keeping current secrets and merging missing keys"
+  else
+    tmp="$(mktemp)"
+    cat "${TEMPLATES_DIR}/.env.example" >"${tmp}"
+    if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/host.env" ]]; then
+      grep -v '^[[:space:]]*#' "${HOST_DIR}/host.env" | grep -v '^[[:space:]]*$' >>"${tmp}" || true
+    fi
+    if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/secrets.env" ]]; then
+      grep -v '^[[:space:]]*#' "${HOST_DIR}/secrets.env" | grep -v '^[[:space:]]*$' >>"${tmp}" || true
+    fi
+
+    awk -F= '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      { key=$1; val=substr($0, index($0, "=") + 1); vals[key]=val }
+      END { for (k in vals) print k "=" vals[k] }
+    ' "${tmp}" >"${env_file}"
+    rm -f "${tmp}"
+    chmod 600 "${env_file}"
+    log "Created ${env_file}"
   fi
 
-  tmp="$(mktemp)"
-  cat "${TEMPLATES_DIR}/.env.example" >"${tmp}"
-  if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/host.env" ]]; then
-    grep -v '^[[:space:]]*#' "${HOST_DIR}/host.env" | grep -v '^[[:space:]]*$' >>"${tmp}" || true
+  merge_env_keys "${TEMPLATES_DIR}/.env.example" "${env_file}"
+  if [[ -n "${HOST_DIR}" ]]; then
+    merge_env_keys "${HOST_DIR}/host.env" "${env_file}"
+    merge_env_keys "${HOST_DIR}/secrets.env" "${env_file}"
   fi
-  if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/secrets.env" ]]; then
-    grep -v '^[[:space:]]*#' "${HOST_DIR}/secrets.env" | grep -v '^[[:space:]]*$' >>"${tmp}" || true
-  fi
+}
 
-  awk -F= '
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*$/ { next }
-    { key=$1; val=substr($0, index($0, "=") + 1); vals[key]=val }
-    END { for (k in vals) print k "=" vals[k] }
-  ' "${tmp}" >"${env_file}"
-  rm -f "${tmp}"
-  chmod 600 "${env_file}"
-  log "Created ${env_file}"
+sync_stacks() {
+  local name src dst
+
+  mkdir -p "${BASE_DIR}/stacks"
+  sync_managed_file "$(stack_src core/docker-compose.yml)" "${BASE_DIR}/docker-compose.yml"
+
+  for src in "${STACKS_DIR}"/*; do
+    [[ -d "${src}" ]] || continue
+    name="$(basename "${src}")"
+    [[ "${name}" == "core" ]] && continue
+    dst="${BASE_DIR}/stacks/${name}"
+    mkdir -p "${dst}"
+    if [[ -n "${SYSTEMS_DIR}" && -d "${SYSTEMS_DIR}/stacks/${name}" ]]; then
+      rsync -a "${SYSTEMS_DIR}/stacks/${name}/" "${dst}/"
+    else
+      rsync -a "${src}/" "${dst}/"
+    fi
+    log "Synced stack: ${dst}"
+  done
+}
+
+sync_homepage_config() {
+  local src dst
+  src="$(template_src configs/homepage)"
+  if [[ -d "${src}" ]]; then
+    mkdir -p "${BASE_DIR}/configs/homepage"
+    for dst in "${src}"/*; do
+      [[ -f "${dst}" ]] || continue
+      sync_managed_file "${dst}" "${BASE_DIR}/configs/homepage/$(basename "${dst}")"
+    done
+  fi
 }
 
 populate_templates() {
-  copy_file_if_needed "$(template_src docker-compose.yml)" "${BASE_DIR}/docker-compose.yml"
   create_env_file
+  sync_stacks
+  sync_homepage_config
 
-  copy_script_if_needed "$(template_src scripts/status.sh)" "${BASE_DIR}/scripts/status.sh"
-  copy_script_if_needed "$(template_src scripts/logs.sh)" "${BASE_DIR}/scripts/logs.sh"
-  copy_script_if_needed "$(template_src scripts/update.sh)" "${BASE_DIR}/scripts/update.sh"
-  copy_script_if_needed "$(template_src scripts/backup.sh)" "${BASE_DIR}/scripts/backup.sh"
-  copy_script_if_needed "$(template_src scripts/restore.sh)" "${BASE_DIR}/scripts/restore.sh"
-  copy_script_if_needed "$(template_src scripts/test.sh)" "${BASE_DIR}/scripts/test.sh"
-  copy_script_if_needed "$(template_src scripts/tests/nvme.sh)" "${BASE_DIR}/scripts/tests/nvme.sh"
-  copy_script_if_needed "$(template_src scripts/tests/pi5-power.sh)" "${BASE_DIR}/scripts/tests/pi5-power.sh"
-  copy_script_if_needed "$(template_src scripts/pi5-power-exporter.sh)" "${BASE_DIR}/scripts/pi5-power-exporter.sh"
+  mkdir -p "${BASE_DIR}/scripts/lib" "${BASE_DIR}/scripts/tests"
+  sync_managed_script "$(template_src scripts/lib/stacks.sh)" "${BASE_DIR}/scripts/lib/stacks.sh"
+  sync_managed_script "$(template_src scripts/status.sh)" "${BASE_DIR}/scripts/status.sh"
+  sync_managed_script "$(template_src scripts/logs.sh)" "${BASE_DIR}/scripts/logs.sh"
+  sync_managed_script "$(template_src scripts/update.sh)" "${BASE_DIR}/scripts/update.sh"
+  sync_managed_script "$(template_src scripts/backup.sh)" "${BASE_DIR}/scripts/backup.sh"
+  sync_managed_script "$(template_src scripts/restore.sh)" "${BASE_DIR}/scripts/restore.sh"
+  sync_managed_script "$(template_src scripts/test.sh)" "${BASE_DIR}/scripts/test.sh"
+  sync_managed_script "$(template_src scripts/tests/nvme.sh)" "${BASE_DIR}/scripts/tests/nvme.sh"
+  sync_managed_script "$(template_src scripts/tests/pi5-power.sh)" "${BASE_DIR}/scripts/tests/pi5-power.sh"
+  sync_managed_script "$(template_src scripts/pi5-power-exporter.sh)" "${BASE_DIR}/scripts/pi5-power-exporter.sh"
 
-  copy_file_if_needed "$(template_src configs/prometheus/prometheus.yml)" "${BASE_DIR}/configs/prometheus/prometheus.yml"
-  copy_file_if_needed "$(template_src configs/grafana/provisioning/datasources/prometheus.yaml)" "${BASE_DIR}/configs/grafana/provisioning/datasources/prometheus.yaml"
-  copy_file_if_needed "$(template_src configs/grafana/provisioning/dashboards/provider.yaml)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/provider.yaml"
-  # Always sync: restarts alone do not pull JSON from git; copy_file_if_needed skips when the file exists.
-  install -m 0644 "$(template_src configs/grafana/provisioning/dashboards/json/homelab-temperature.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
-  log "Wrote: ${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
-  install -m 0644 "$(template_src configs/grafana/provisioning/dashboards/json/pi5-power.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/pi5-power.json"
-  log "Wrote: ${BASE_DIR}/configs/grafana/provisioning/dashboards/json/pi5-power.json"
+  sync_managed_file "$(template_src configs/prometheus/prometheus.yml)" "${BASE_DIR}/configs/prometheus/prometheus.yml"
+  sync_managed_file "$(template_src configs/grafana/provisioning/datasources/prometheus.yaml)" "${BASE_DIR}/configs/grafana/provisioning/datasources/prometheus.yaml"
+  sync_managed_file "$(template_src configs/grafana/provisioning/dashboards/provider.yaml)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/provider.yaml"
+  sync_managed_file "$(template_src configs/grafana/provisioning/dashboards/json/homelab-temperature.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/homelab-temperature.json"
+  sync_managed_file "$(template_src configs/grafana/provisioning/dashboards/json/pi5-power.json)" "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/pi5-power.json"
   rm -f "${BASE_DIR}/configs/grafana/provisioning/dashboards/json/ssd-temperature.json"
-  copy_file_if_needed "$(template_src smartctl-exporter/Dockerfile)" "${BASE_DIR}/configs/smartctl-exporter/Dockerfile"
+  sync_managed_file "$(template_src smartctl-exporter/Dockerfile)" "${BASE_DIR}/configs/smartctl-exporter/Dockerfile"
 
   if [[ -n "${HOST_DIR}" && -f "${HOST_DIR}/docker-compose.override.yml" ]]; then
     copy_file_if_needed "${HOST_DIR}/docker-compose.override.yml" "${BASE_DIR}/docker-compose.override.yml"
@@ -320,7 +422,10 @@ ensure_cmdline_param() {
   local param="$1"
   local key="${param%%=*}"
   local cmdline
-  cmdline="$(cmdline_path)" || { log "No kernel cmdline file found; cannot apply ${param}"; return 0; }
+  cmdline="$(cmdline_path)" || {
+    log "No kernel cmdline file found; cannot apply ${param}"
+    return 0
+  }
 
   if grep -qE "(^|[[:space:]])${param//./\\.}([[:space:]]|$)" "${cmdline}"; then
     log "Kernel param already present in ${cmdline}: ${param}"
@@ -381,8 +486,8 @@ is_raspberry_pi_5() {
   local model=""
   model="$(device_tree_model)" || return 1
   case "${model}" in
-    *"Raspberry Pi 5"*) return 0 ;;
-    *) return 1 ;;
+  *"Raspberry Pi 5"*) return 0 ;;
+  *) return 1 ;;
   esac
 }
 
@@ -527,72 +632,33 @@ add_aliases() {
 }
 
 compose_up() {
-  log "Starting containers"
-  cd "${BASE_DIR}"
-  docker compose up -d
-}
-
-MONITORING_SERVICES=(prometheus grafana node-exporter cadvisor smartctl-exporter)
-
-compose_monitoring_install() {
-  local did_full_stack_recreate="${1:-0}"
-  local svc missing=() needs_build=0
-
-  cd "${BASE_DIR}"
-
-  if ! compose_has_service "prometheus"; then
-    log "docker-compose.yml has no prometheus service. Refresh templates (e.g. sudo ./bootstrap/setup.sh --install --force)."
-    return 0
-  fi
-
-  if [[ "${did_full_stack_recreate}" -eq 1 ]]; then
-    log "Monitoring stack already recreated with full stack (--clean-install)."
-    return 0
-  fi
-
-  for svc in "${MONITORING_SERVICES[@]}"; do
-    if ! compose_has_service "${svc}"; then
-      continue
-    fi
-    if ! compose_service_running "${svc}"; then
-      missing+=("${svc}")
-      if [[ "${svc}" == "smartctl-exporter" ]]; then
-        needs_build=1
-      fi
-    fi
-  done
-
-  if [[ ${#missing[@]} -eq 0 ]]; then
-    log "Monitoring stack already running; skipping redeploy (use --clean-install to recreate the full stack, including monitoring)."
-    return 0
-  fi
-
-  log "Deploying monitoring services: ${missing[*]}"
-  if [[ "${needs_build}" -eq 1 ]]; then
-    docker compose up -d --build "${missing[@]}"
-  else
-    docker compose up -d "${missing[@]}"
-  fi
+  log "Starting all stacks"
+  compose_install
 }
 
 compose_install() {
-  local did_full_stack_recreate=0
+  local extra=()
+  local dir
 
-  cd "${BASE_DIR}"
-
-  if docker compose ps -a --services 2>/dev/null | grep -q .; then
-    if [[ "${CLEAN_INSTALL}" -eq 1 ]]; then
-      log "Existing containers detected. Recreating because --clean-install was set."
-      docker compose up -d --force-recreate
-      did_full_stack_recreate=1
-    else
-      log "Existing containers detected. Skipping container creation (use --clean-install to recreate)."
-    fi
-  else
-    compose_up
+  if [[ "${CLEAN_INSTALL}" -eq 1 ]]; then
+    extra+=(--force-recreate)
+    log "Recreating containers because --clean-install was set."
   fi
 
-  compose_monitoring_install "${did_full_stack_recreate}"
+  while IFS= read -r dir; do
+    log "Starting stack: ${dir}"
+    homelab_compose "${dir}" up -d --remove-orphans --build "${extra[@]+"${extra[@]}"}"
+  done < <(homelab_stack_dirs)
+}
+
+do_sync() {
+  require_root
+  resolve_host
+  create_structure
+  fix_grafana_permissions
+  populate_templates
+  compose_install
+  log "Sync complete. Status: ${BASE_DIR}/scripts/status.sh"
 }
 
 do_install() {
@@ -619,6 +685,7 @@ Repo:           ${REPO_ROOT}
 Host profile:   ${HOST:-none}
 Base directory: ${BASE_DIR}
 Edit env:       ${BASE_DIR}/.env  (or hosts/${HOST}/host.env + secrets.env)
+Stacks:         ${BASE_DIR}/docker-compose.yml and ${BASE_DIR}/stacks/*/
 Stack status:   ${BASE_DIR}/scripts/status.sh
 Health checks:  ${BASE_DIR}/scripts/test.sh  (alias: hltest)
 Monitoring:     Prometheus :9090, Grafana :3002, cAdvisor :8082, smartctl :9633
@@ -654,8 +721,11 @@ do_backup() {
 
 do_restart() {
   require_root
-  cd "${BASE_DIR}"
-  docker compose restart
+  local dir
+  while IFS= read -r dir; do
+    log "Restarting stack: ${dir}"
+    homelab_compose "${dir}" restart
+  done < <(homelab_stack_dirs)
 }
 
 do_reset() {
@@ -682,39 +752,50 @@ do_test() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --host)
-      HOST="${2:-}"
-      if [[ -z "${HOST}" ]]; then
-        echo "--host requires a name"
-        exit 1
-      fi
-      shift
-      ;;
-    --install) ACTION="install" ;;
-    --update) ACTION="update" ;;
-    --backup) ACTION="backup" ;;
-    --restart) ACTION="restart" ;;
-    --test) ACTION="test" ;;
-    --test-nvme) ACTION="test"; TEST_SUITE="nvme" ;;
-    --test-pi5-power) ACTION="test"; TEST_SUITE="pi5-power" ;;
-    --reset) ACTION="reset" ;;
-    --force) FORCE=1 ;;
-    --clean-install|--recreate-containers) CLEAN_INSTALL=1 ;;
-    -h|--help) usage; exit 0 ;;
-    *)
-      echo "Unknown argument: $1"
-      usage
+  --host)
+    HOST="${2:-}"
+    if [[ -z "${HOST}" ]]; then
+      echo "--host requires a name"
       exit 1
-      ;;
+    fi
+    shift
+    ;;
+  --install) ACTION="install" ;;
+  --sync) ACTION="sync" ;;
+  --update) ACTION="update" ;;
+  --backup) ACTION="backup" ;;
+  --restart) ACTION="restart" ;;
+  --test) ACTION="test" ;;
+  --test-nvme)
+    ACTION="test"
+    TEST_SUITE="nvme"
+    ;;
+  --test-pi5-power)
+    ACTION="test"
+    TEST_SUITE="pi5-power"
+    ;;
+  --reset) ACTION="reset" ;;
+  --force) FORCE=1 ;;
+  --clean-install | --recreate-containers) CLEAN_INSTALL=1 ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown argument: $1"
+    usage
+    exit 1
+    ;;
   esac
   shift
 done
 
 case "${ACTION}" in
-  install) do_install ;;
-  update) do_update ;;
-  backup) do_backup ;;
-  restart) do_restart ;;
-  reset) do_reset ;;
-  test) do_test ;;
+install) do_install ;;
+sync) do_sync ;;
+update) do_update ;;
+backup) do_backup ;;
+restart) do_restart ;;
+reset) do_reset ;;
+test) do_test ;;
 esac
